@@ -73,7 +73,7 @@ func main() {
 		return
 	}
 	localUDPPort := args[0]
-	// localTCPPort := args[1]
+	localTCPPort := args[1]
 	remoteAserverPort := args[2]
 	buffer := make([]byte, 1024)
 
@@ -89,15 +89,9 @@ func main() {
 		fmt.Println(err)
 	}
 	res := buffer[0:n]
-	var dat map[string]interface{}
-	json.Unmarshal(res, &dat)
-	var nFloat = dat["N"].(float64)
-	var nInt = int64(nFloat)
-	nonceMsg := NonceMessage{
-		Nonce: dat["Nonce"].(string),
-		N:     nInt,
-	}
-	fmt.Println(nonceMsg)
+	var nonceMsg NonceMessage
+	json.Unmarshal(res, &nonceMsg)
+	fmt.Println("Nonce Message: ", nonceMsg)
 	sMsg := SecretMessage{
 		Secret: "",
 	}
@@ -106,7 +100,6 @@ func main() {
 		powisDone := false
 		for suffix := len(str) - int(nonceMsg.N) - 1; suffix < len(str); suffix++ {
 			if str[suffix] == 48 {
-				// fmt.Println(str[suffix])
 				powisDone = true
 			} else {
 				powisDone = false
@@ -114,12 +107,11 @@ func main() {
 			}
 		}
 		if powisDone {
-			fmt.Println(str)
 			sMsg.Secret = strconv.Itoa(i)
 			break
 		}
 	}
-	fmt.Println(sMsg)
+	fmt.Println("Secret Message: ", sMsg)
 	payloadSecret, _ := json.Marshal(sMsg)
 	conn.WriteToUDP(payloadSecret, aserver)
 	bufferSecret := make([]byte, 1024)
@@ -128,36 +120,41 @@ func main() {
 		fmt.Println(err)
 	}
 	resSecret := bufferSecret[0:n2]
-	var datSecret map[string]interface{}
-	json.Unmarshal(resSecret, &datSecret)
-	fmt.Println(datSecret)
-	var nFortFloat = datSecret["FortuneNonce"].(float64)
-	var nFortInt = int64(nFortFloat)
-	infoMsg := FortuneInfoMessage{
-		FortuneServer: datSecret["FortuneServer"].(string),
-		FortuneNonce:  nFortInt,
-	}
+	var infoMessage FortuneInfoMessage
+	json.Unmarshal(resSecret, &infoMessage)
+	fmt.Println("Fortune Info: ", infoMessage)
+
 	// listenConn, _ := net.Listen("tcp", localTCPPort)
-	fserver, err := net.Dial("tcp", infoMsg.FortuneServer)
+	localAddr, err := net.ResolveTCPAddr("tcp", localTCPPort)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fserver, err := net.ResolveTCPAddr("tcp", infoMessage.FortuneServer)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fConn, err := net.DialTCP("tcp", localAddr, fserver)
 	if err != nil {
 		fmt.Println(err)
 	}
 	fortReq := FortuneReqMessage{
-		FortuneNonce: infoMsg.FortuneNonce,
+		FortuneNonce: infoMessage.FortuneNonce,
 	}
+	fmt.Println("Fort Req: ", fortReq)
 	payloadFort, _ := json.Marshal(fortReq)
-	fserver.Write(payloadFort)
+	fConn.Write(payloadFort)
 	bufferFort := make([]byte, 1024)
-	n3, err := fserver.Read(bufferFort)
+	n3, err := fConn.Read(bufferFort)
 	if err != nil {
 		fmt.Println(err)
 	}
 	resFort := bufferFort[0:n3]
-	var datFort map[string]interface{}
-	json.Unmarshal(resFort, &datFort)
-	fmt.Println(datFort)
+	var fMsg FortuneMessage
+	json.Unmarshal(resFort, &fMsg)
+	fmt.Println("Fortune Message: ", fMsg)
 	// Use json.Marshal json.Unmarshal for encoding/decoding to servers
-
+	conn.Close()
+	fConn.Close()
 }
 
 func getUDPConnection(ip string) *net.UDPConn {
