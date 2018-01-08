@@ -14,6 +14,7 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"strconv"
 	//"encoding/json"
 
@@ -72,32 +73,89 @@ func main() {
 		return
 	}
 	localUDPPort := args[0]
-	localTCPPort := args[1]
+	// localTCPPort := args[1]
 	remoteAserverPort := args[2]
 	buffer := make([]byte, 1024)
-	fmt.Println(localUDPPort)
-	fmt.Println(localTCPPort)
-	fmt.Println(remoteAserverPort)
 
 	conn := getUDPConnection(localUDPPort)
 	aserver, err := net.ResolveUDPAddr("udp", remoteAserverPort)
 	if err != nil {
 		fmt.Println(err)
 	}
-	payload := []byte("hi")
+	payload, _ := json.Marshal("hi, I want the goods")
 	conn.WriteToUDP(payload, aserver)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		fmt.Println(err)
 	}
+	res := buffer[0:n]
+	var dat map[string]interface{}
+	json.Unmarshal(res, &dat)
+	var nFloat = dat["N"].(float64)
+	var nInt = int64(nFloat)
 	nonceMsg := NonceMessage{
-		Nonce: strconv.Itoa(n),
-		N:     int64(n),
+		Nonce: dat["Nonce"].(string),
+		N:     nInt,
 	}
 	fmt.Println(nonceMsg)
-	for i := 0; i < math.MaxInt32; i++ {
-		computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
+	sMsg := SecretMessage{
+		Secret: "",
 	}
+	for i := 0; i < math.MaxInt32; i++ {
+		str := computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
+		powisDone := false
+		for suffix := len(str) - int(nonceMsg.N) - 1; suffix < len(str); suffix++ {
+			if str[suffix] == 48 {
+				// fmt.Println(str[suffix])
+				powisDone = true
+			} else {
+				powisDone = false
+				break
+			}
+		}
+		if powisDone {
+			fmt.Println(str)
+			sMsg.Secret = strconv.Itoa(i)
+			break
+		}
+	}
+	fmt.Println(sMsg)
+	payloadSecret, _ := json.Marshal(sMsg)
+	conn.WriteToUDP(payloadSecret, aserver)
+	bufferSecret := make([]byte, 1024)
+	n2, err := conn.Read(bufferSecret)
+	if err != nil {
+		fmt.Println(err)
+	}
+	resSecret := bufferSecret[0:n2]
+	var datSecret map[string]interface{}
+	json.Unmarshal(resSecret, &datSecret)
+	fmt.Println(datSecret)
+	var nFortFloat = datSecret["FortuneNonce"].(float64)
+	var nFortInt = int64(nFortFloat)
+	infoMsg := FortuneInfoMessage{
+		FortuneServer: datSecret["FortuneServer"].(string),
+		FortuneNonce:  nFortInt,
+	}
+	// listenConn, _ := net.Listen("tcp", localTCPPort)
+	fserver, err := net.Dial("tcp", infoMsg.FortuneServer)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fortReq := FortuneReqMessage{
+		FortuneNonce: infoMsg.FortuneNonce,
+	}
+	payloadFort, _ := json.Marshal(fortReq)
+	fserver.Write(payloadFort)
+	bufferFort := make([]byte, 1024)
+	n3, err := fserver.Read(bufferFort)
+	if err != nil {
+		fmt.Println(err)
+	}
+	resFort := bufferFort[0:n3]
+	var datFort map[string]interface{}
+	json.Unmarshal(resFort, &datFort)
+	fmt.Println(datFort)
 	// Use json.Marshal json.Unmarshal for encoding/decoding to servers
 
 }
