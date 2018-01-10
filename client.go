@@ -12,15 +12,16 @@ $ go run client.go 127.0.0.1:2020 127.0.0.1:3030 127.0.0.1:7070
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"strconv"
 	//"encoding/json"
 
 	// TODO
 	"fmt"
-	"math"
 	"net"
 	"os"
 )
@@ -95,22 +96,22 @@ func main() {
 	sMsg := SecretMessage{
 		Secret: "",
 	}
+	var bufferString bytes.Buffer
+	for i := 0; i < int(nonceMsg.N); i++ {
+		bufferString.WriteString("0")
+	}
+	arrayNonce := bufferString.String()
+
 	for i := 0; i < math.MaxInt32; i++ {
 		str := computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
-		powisDone := false
-		for suffix := len(str) - int(nonceMsg.N) - 1; suffix < len(str); suffix++ {
-			if str[suffix] == 48 {
-				powisDone = true
-			} else {
-				powisDone = false
-				break
-			}
-		}
-		if powisDone {
+		suffix := len(str) - int(nonceMsg.N)
+		if str[suffix:] == arrayNonce {
 			sMsg.Secret = strconv.Itoa(i)
 			break
 		}
+
 	}
+
 	fmt.Println("Secret Message: ", sMsg)
 	payloadSecret, _ := json.Marshal(sMsg)
 	conn.WriteToUDP(payloadSecret, aserver)
@@ -152,7 +153,7 @@ func main() {
 	var fMsg FortuneMessage
 	json.Unmarshal(resFort, &fMsg)
 	fmt.Println("Fortune Message: ", fMsg)
-	// Use json.Marshal json.Unmarshal for encoding/decoding to servers
+
 	conn.Close()
 	fConn.Close()
 }
