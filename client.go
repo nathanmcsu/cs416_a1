@@ -67,10 +67,8 @@ type FortuneMessage struct {
 
 // Main workhorse method.
 func main() {
-	// TODO
 	args := os.Args[1:]
 	if len(args) != 3 {
-		fmt.Println("Usage: client.go [local UDP ip:port] [local TCP ip:port] [aserver UDP ip:port]")
 		return
 	}
 	localUDPPort := args[0]
@@ -78,21 +76,25 @@ func main() {
 	remoteAserverPort := args[2]
 	buffer := make([]byte, 1024)
 
+	// UDP Send Arbitrary Message
 	conn := getUDPConnection(localUDPPort)
 	aserver, err := net.ResolveUDPAddr("udp", remoteAserverPort)
 	if err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 	}
 	payload, _ := json.Marshal("hi, I want the goods")
 	conn.WriteToUDP(payload, aserver)
+
+	// UDP Read Nonce Message
 	n, err := conn.Read(buffer)
 	if err != nil {
-		fmt.Println(err)
+		//fmt.Println(err)
 	}
 	res := buffer[0:n]
 	var nonceMsg NonceMessage
 	json.Unmarshal(res, &nonceMsg)
-	fmt.Println("Nonce Message: ", nonceMsg)
+
+	// Compute Secret
 	sMsg := SecretMessage{
 		Secret: "",
 	}
@@ -101,61 +103,75 @@ func main() {
 		bufferString.WriteString("0")
 	}
 	arrayNonce := bufferString.String()
+	dataChan := make(chan string)
 
-	for i := 0; i < math.MaxInt32; i++ {
-		str := computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
-		suffix := len(str) - int(nonceMsg.N)
-		if str[suffix:] == arrayNonce {
-			sMsg.Secret = strconv.Itoa(i)
-			break
-		}
-
+	for i := 0; i <= math.MaxInt32; i = i + math.MaxInt32/8 {
+		go getSecret(i, i+math.MaxInt32/8-1, nonceMsg, dataChan, arrayNonce)
 	}
+	// go getSecret(0, math.MaxInt32/4, nonceMsg, dataChan, arrayNonce)
+	// go getSecret(math.MaxInt32/4+1, math.MaxInt32/2, nonceMsg, dataChan, arrayNonce)
+	// go getSecret(math.MaxInt32/2+1, (math.MaxInt32/4)*3, nonceMsg, dataChan, arrayNonce)
+	// go getSecret((math.MaxInt32/4)*3+1, math.MaxInt32, nonceMsg, dataChan, arrayNonce)
 
-	fmt.Println("Secret Message: ", sMsg)
+	sMsg.Secret = <-dataChan
+
+	// UDP Send Secret
 	payloadSecret, _ := json.Marshal(sMsg)
 	conn.WriteToUDP(payloadSecret, aserver)
 	bufferSecret := make([]byte, 1024)
+
+	// UDP Read FServer Info
 	n2, err := conn.Read(bufferSecret)
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	resSecret := bufferSecret[0:n2]
 	var infoMessage FortuneInfoMessage
 	json.Unmarshal(resSecret, &infoMessage)
-	fmt.Println("Fortune Info: ", infoMessage)
 
-	// listenConn, _ := net.Listen("tcp", localTCPPort)
+	// TCP Send Fortune Req Message
 	localAddr, err := net.ResolveTCPAddr("tcp", localTCPPort)
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	fserver, err := net.ResolveTCPAddr("tcp", infoMessage.FortuneServer)
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	fConn, err := net.DialTCP("tcp", localAddr, fserver)
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	fortReq := FortuneReqMessage{
 		FortuneNonce: infoMessage.FortuneNonce,
 	}
-	fmt.Println("Fort Req: ", fortReq)
 	payloadFort, _ := json.Marshal(fortReq)
 	fConn.Write(payloadFort)
+
+	// TCP Read Fortune Message
 	bufferFort := make([]byte, 1024)
 	n3, err := fConn.Read(bufferFort)
 	if err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 	}
 	resFort := bufferFort[0:n3]
 	var fMsg FortuneMessage
 	json.Unmarshal(resFort, &fMsg)
-	fmt.Println("Fortune Message: ", fMsg)
+	fmt.Println(fMsg.Fortune)
 
 	conn.Close()
 	fConn.Close()
+}
+
+func getSecret(start, end int, nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string) {
+	for i := start; i < end; i++ {
+		str := computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
+		suffix := len(str) - int(nonceMsg.N)
+		if str[suffix:] == arrayNonce {
+			dataChan <- strconv.Itoa(i)
+			break
+		}
+	}
 }
 
 func getUDPConnection(ip string) *net.UDPConn {
