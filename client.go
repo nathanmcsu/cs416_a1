@@ -105,7 +105,7 @@ func main() {
 	arrayNonce := bufferString.String()
 	dataChan := make(chan string)
 
-	for i := 0; i <= math.MaxInt32; i = i + math.MaxInt32/8 {
+	for i := 0; i < math.MaxInt32-7; i = i + math.MaxInt32/8 {
 		go getSecret(i, i+math.MaxInt32/8-1, nonceMsg, dataChan, arrayNonce)
 	}
 	// go getSecret(0, math.MaxInt32/4, nonceMsg, dataChan, arrayNonce)
@@ -169,7 +169,7 @@ func getSecret(start, end int, nonceMsg NonceMessage, dataChan chan<- string, ar
 		suffix := len(str) - int(nonceMsg.N)
 		if str[suffix:] == arrayNonce {
 			dataChan <- strconv.Itoa(i)
-			break
+			return
 		}
 	}
 }
