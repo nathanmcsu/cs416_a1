@@ -105,9 +105,10 @@ func main() {
 	arrayNonce := bufferString.String()
 	dataChan := make(chan string)
 
-	for i := 0; i < math.MaxInt32-7; i = i + math.MaxInt32/8 {
-		go getSecret(i, i+math.MaxInt32/8-1, nonceMsg, dataChan, arrayNonce)
+	for i := 0; i < math.MaxInt32-1; i = i + math.MaxInt32 - 1/1057 {
+		go getSecret(i, i+math.MaxInt32-1/1057, nonceMsg, dataChan, arrayNonce)
 	}
+
 	// go getSecret(0, math.MaxInt32/4, nonceMsg, dataChan, arrayNonce)
 	// go getSecret(math.MaxInt32/4+1, math.MaxInt32/2, nonceMsg, dataChan, arrayNonce)
 	// go getSecret(math.MaxInt32/2+1, (math.MaxInt32/4)*3, nonceMsg, dataChan, arrayNonce)
