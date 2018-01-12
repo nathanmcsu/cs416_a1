@@ -93,7 +93,7 @@ func main() {
 	res := buffer[0:n]
 	var nonceMsg NonceMessage
 	json.Unmarshal(res, &nonceMsg)
-
+	fmt.Println(nonceMsg)
 	// Compute Secret
 	sMsg := SecretMessage{
 		Secret: "",
@@ -105,8 +105,15 @@ func main() {
 	arrayNonce := bufferString.String()
 	dataChan := make(chan string)
 
-	for i := 0; i < math.MaxInt32-1; i = i + math.MaxInt32 - 1/1057 {
-		go getSecret(i, i+math.MaxInt32-1/1057, nonceMsg, dataChan, arrayNonce)
+	for i := 0; i < (math.MaxInt32-1)/2; i = i + 1015839 {
+		go getSecret(i, i+1015839, nonceMsg, dataChan, arrayNonce)
+		fmt.Print("Bottom  ", i)
+		fmt.Println(" to ", i+1015839)
+	}
+	for i := (math.MaxInt32 - 1); i > (math.MaxInt32-1)/2; i = i - 1015839 {
+		go getSecret(i, i-1015839, nonceMsg, dataChan, arrayNonce)
+		fmt.Print("Top  ", i)
+		fmt.Println(" to ", i-1015839)
 	}
 
 	// go getSecret(0, math.MaxInt32/4, nonceMsg, dataChan, arrayNonce)
