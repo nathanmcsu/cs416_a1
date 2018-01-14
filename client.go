@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math"
+	"math/rand"
 	"strconv"
 	//"encoding/json"
 
@@ -78,22 +79,17 @@ func main() {
 
 	// UDP Send Arbitrary Message
 	conn := getUDPConnection(localUDPPort)
-	aserver, err := net.ResolveUDPAddr("udp", remoteAserverPort)
-	if err != nil {
-		//fmt.Println(err)
-	}
+	aserver, _ := net.ResolveUDPAddr("udp", remoteAserverPort)
 	payload, _ := json.Marshal("hi, I want the goods")
 	conn.WriteToUDP(payload, aserver)
 
 	// UDP Read Nonce Message
-	n, err := conn.Read(buffer)
-	if err != nil {
-		//fmt.Println(err)
-	}
+	n, _ := conn.Read(buffer)
+
 	res := buffer[0:n]
 	var nonceMsg NonceMessage
 	json.Unmarshal(res, &nonceMsg)
-	fmt.Println(nonceMsg)
+
 	// Compute Secret
 	sMsg := SecretMessage{
 		Secret: "",
@@ -105,23 +101,28 @@ func main() {
 	arrayNonce := bufferString.String()
 	dataChan := make(chan string)
 
-	for i := 0; i < (math.MaxInt32-1)/2; i = i + 1015839 {
-		go getSecret(i, i+1015839, nonceMsg, dataChan, arrayNonce)
-		fmt.Print("Bottom  ", i)
-		fmt.Println(" to ", i+1015839)
-	}
-	for i := (math.MaxInt32 - 1); i > (math.MaxInt32-1)/2; i = i - 1015839 {
-		go getSecret(i, i-1015839, nonceMsg, dataChan, arrayNonce)
-		fmt.Print("Top  ", i)
-		fmt.Println(" to ", i-1015839)
-	}
+	quitChan := make(chan bool)
+	go getSecretRand(nonceMsg, dataChan, arrayNonce, quitChan)
 
-	// go getSecret(0, math.MaxInt32/4, nonceMsg, dataChan, arrayNonce)
-	// go getSecret(math.MaxInt32/4+1, math.MaxInt32/2, nonceMsg, dataChan, arrayNonce)
-	// go getSecret(math.MaxInt32/2+1, (math.MaxInt32/4)*3, nonceMsg, dataChan, arrayNonce)
-	// go getSecret((math.MaxInt32/4)*3+1, math.MaxInt32, nonceMsg, dataChan, arrayNonce)
+	// Bottom up
+	for i := 0; i < (math.MaxInt32-1)/2; i = i + 32537631 {
+		go getSecretRange(i, i+32537631, nonceMsg, dataChan, arrayNonce)
+	}
+	// Top down
+	for i := (math.MaxInt32 - 1); i > (math.MaxInt32-1)/2; i = i - 32537631 {
+		go getSecretRange(i, i-32537631, nonceMsg, dataChan, arrayNonce)
+	}
+	// middle up
+	for i := (math.MaxInt32 - 1) / 2; i < (math.MaxInt32 - 1); i = i + 32537631 {
+		go getSecretRange(i, i-32537631, nonceMsg, dataChan, arrayNonce)
+	}
+	// middle down
+	for i := (math.MaxInt32 - 1) / 2; i > 0; i = i - 32537631 {
+		go getSecretRange(i, i-32537631, nonceMsg, dataChan, arrayNonce)
+	}
 
 	sMsg.Secret = <-dataChan
+	close(quitChan)
 
 	// UDP Send Secret
 	payloadSecret, _ := json.Marshal(sMsg)
@@ -129,27 +130,19 @@ func main() {
 	bufferSecret := make([]byte, 1024)
 
 	// UDP Read FServer Info
-	n2, err := conn.Read(bufferSecret)
-	if err != nil {
-		// fmt.Println(err)
-	}
+	n2, _ := conn.Read(bufferSecret)
+
 	resSecret := bufferSecret[0:n2]
 	var infoMessage FortuneInfoMessage
 	json.Unmarshal(resSecret, &infoMessage)
 
 	// TCP Send Fortune Req Message
-	localAddr, err := net.ResolveTCPAddr("tcp", localTCPPort)
-	if err != nil {
-		// fmt.Println(err)
-	}
-	fserver, err := net.ResolveTCPAddr("tcp", infoMessage.FortuneServer)
-	if err != nil {
-		// fmt.Println(err)
-	}
-	fConn, err := net.DialTCP("tcp", localAddr, fserver)
-	if err != nil {
-		// fmt.Println(err)
-	}
+	localAddr, _ := net.ResolveTCPAddr("tcp", localTCPPort)
+
+	fserver, _ := net.ResolveTCPAddr("tcp", infoMessage.FortuneServer)
+
+	fConn, _ := net.DialTCP("tcp", localAddr, fserver)
+
 	fortReq := FortuneReqMessage{
 		FortuneNonce: infoMessage.FortuneNonce,
 	}
@@ -158,10 +151,8 @@ func main() {
 
 	// TCP Read Fortune Message
 	bufferFort := make([]byte, 1024)
-	n3, err := fConn.Read(bufferFort)
-	if err != nil {
-		// fmt.Println(err)
-	}
+	n3, _ := fConn.Read(bufferFort)
+
 	resFort := bufferFort[0:n3]
 	var fMsg FortuneMessage
 	json.Unmarshal(resFort, &fMsg)
@@ -171,13 +162,29 @@ func main() {
 	fConn.Close()
 }
 
-func getSecret(start, end int, nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string) {
+func getSecretRange(start, end int, nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string) {
 	for i := start; i < end; i++ {
 		str := computeNonceSecretHash(nonceMsg.Nonce, strconv.Itoa(i))
 		suffix := len(str) - int(nonceMsg.N)
 		if str[suffix:] == arrayNonce {
 			dataChan <- strconv.Itoa(i)
 			return
+		}
+	}
+}
+func getSecretRand(nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string, quitChan <-chan bool) {
+	for {
+		select {
+		case _ = <-quitChan:
+			return
+		default:
+			var randI = strconv.FormatInt(rand.Int63(), 36)
+			str := computeNonceSecretHash(nonceMsg.Nonce, randI)
+			suffix := len(str) - int(nonceMsg.N)
+			if str[suffix:] == arrayNonce {
+				dataChan <- randI
+				return
+			}
 		}
 	}
 }
