@@ -78,7 +78,9 @@ func main() {
 	buffer := make([]byte, 1024)
 
 	// UDP Send Arbitrary Message
-	conn := getUDPConnection(localUDPPort)
+	udpAddr, _ := net.ResolveUDPAddr("udp", localUDPPort)
+	conn, _ := net.ListenUDP("udp", udpAddr)
+
 	aserver, _ := net.ResolveUDPAddr("udp", remoteAserverPort)
 	payload, _ := json.Marshal("hi, I want the goods")
 	conn.WriteToUDP(payload, aserver)
@@ -187,18 +189,6 @@ func getSecretRand(nonceMsg NonceMessage, dataChan chan<- string, arrayNonce str
 			}
 		}
 	}
-}
-
-func getUDPConnection(ip string) *net.UDPConn {
-	addr, err := net.ResolveUDPAddr("udp", ip)
-	if err != nil {
-		fmt.Println(err)
-	}
-	conn, err := net.ListenUDP("udp", addr)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return conn
 }
 
 // Returns the MD5 hash as a hex string for the (nonce + secret) value.
