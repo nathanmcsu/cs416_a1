@@ -105,7 +105,7 @@ func main() {
 
 	quitChan := make(chan bool)
 	go getSecretRand(nonceMsg, dataChan, arrayNonce, quitChan)
-
+	go getSecret64(nonceMsg, dataChan, arrayNonce, quitChan)
 	// Bottom up
 	for i := 0; i < (math.MaxInt32-1)/2; i = i + 32537631 {
 		go getSecretRange(i, i+32537631, nonceMsg, dataChan, arrayNonce)
@@ -121,6 +121,9 @@ func main() {
 	// middle down
 	for i := (math.MaxInt32 - 1) / 2; i > 0; i = i - 32537631 {
 		go getSecretRange(i, i-32537631, nonceMsg, dataChan, arrayNonce)
+	}
+	for i := 0; i < (math.MaxInt32-1)/2; i = i + 32537631 {
+		go getSecretRange(i, i+32537631, nonceMsg, dataChan, arrayNonce)
 	}
 
 	sMsg.Secret = <-dataChan
@@ -176,6 +179,22 @@ func getSecretRange(start, end int, nonceMsg NonceMessage, dataChan chan<- strin
 }
 func getSecretRand(nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string, quitChan <-chan bool) {
 	for {
+		select {
+		case _ = <-quitChan:
+			return
+		default:
+			var randI = strconv.FormatInt(rand.Int63(), 36)
+			str := computeNonceSecretHash(nonceMsg.Nonce, randI)
+			suffix := len(str) - int(nonceMsg.N)
+			if str[suffix:] == arrayNonce {
+				dataChan <- randI
+				return
+			}
+		}
+	}
+}
+func getSecret64(nonceMsg NonceMessage, dataChan chan<- string, arrayNonce string, quitChan <-chan bool) {
+	for i := (math.MaxInt64 - 1); i > math.MaxInt32-1; i = i - 32537631 {
 		select {
 		case _ = <-quitChan:
 			return
