@@ -1,0 +1,7 @@
+Total mark: [100/100]
+---------------------------------------------------
+
+Client properly initiates contact with the aserver [10/100]
+Client computes a valid secret and communicates it to the aserver [40/100]
+Client properly communicates to the fserver and provides the right fnonce [25/100]
+Client prints out the right fortune message [25/100]
